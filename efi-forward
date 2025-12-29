@@ -1,0 +1,39 @@
+#!/bin/bash
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --part-uuid) PARTUUID_OPT=$2; shift 2;;
+        --target) TARGET_OPT=$2; shift 2;;
+        --output) OUTPUT_OPT=$2; shift 2;;
+        --output-hello) OUTPUT_HELLO_OPT=$2; shift 2;;
+        *) echo "Unrecognised param $1"; shift 1;;
+    esac
+done
+
+if [[ -z $PARTUUID_OPT ]]; then
+    echo "No --part-uuid option provided"
+    OPTS_FAILED=1
+fi
+
+if [[ -z $TARGET_OPT ]]; then
+    echo "No --target option provided"
+    OPTS_FAILED=1
+fi
+
+if [[ -z $OUTPUT_OPT ]]; then
+    echo "No --output option provided"
+    OPTS_FAILED=1
+fi
+
+[[ -n $OPTS_FAILED ]] && exit 1
+
+
+PART_UUID='L\"'$PARTUUID_OPT'\"' TARGET='L\"'$TARGET_OPT'\"' make -B forward.efi
+mv forward.efi $OUTPUT_OPT
+
+if [[ -n $OUTPUT_HELLO_OPT ]]; then
+    make -B hello.efi
+    mv hello.efi $OUTPUT_HELLO_OPT
+fi
+
+sync

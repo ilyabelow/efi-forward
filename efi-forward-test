@@ -1,0 +1,123 @@
+#!/bin/bash
+
+OPERATION=$1
+shift 1
+
+if [[ -z $OPERATION ]]; then
+    echo "No operation provided"
+    exit 1
+fi
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --force) FORCE_OPT=1; shift 1;;
+        --clean) CLEAN_OPT=1; shift 1;;
+        --location) 
+            if [[ ! -d $2 ]]; then
+                echo "Provide a valid location"
+                exit 1
+            fi
+            LOCATION_OPT=${2+$2/}; shift 2;;
+        *) echo "Unrecognised param $1"; shift 1;;
+    esac
+done
+
+
+# defaults
+SOURCE_DISK_NAME=${SOURCE_DISK_NAME:-"source.img"}
+TARGET_DISK_NAME=${TARGET_DISK_NAME:-"target.img"}
+OVMF_VARS_NAME=${OVMF_VARS_NAME:-"OVMF_VARS.4m.fd"}
+OVMF_CODE_NAME=${OVMF_CODE_NAME:-"OVMF_CODE.4m.fd"}
+OVMF_VARS_LOCATION=${OVMF_VARD_PATH:-"/usr/share/edk2/x64/"}
+
+# filepaths
+SOURCE_DISK="${LOCATION_OPT}${SOURCE_DISK_NAME}"
+TARGET_DISK="${LOCATION_OPT}${TARGET_DISK_NAME}"
+OVMF_VARS="${LOCATION_OPT}${OVMF_VARS_NAME}"
+OVMF_CODE="${OVMF_VARS_LOCATION}${OVMF_CODE_NAME}"
+OVMF_VARS_ORIG="${OVMF_VARS_LOCATION}${OVMF_VARS_NAME}"
+
+
+should_create() {
+    TARGET="$1"
+    if [[ -n $CLEAN_OPT ]]; then 
+        rm "$TARGET"
+        return 1
+    fi
+    if [[ -e "$TARGET" ]]; then
+        if [[ -n $FORCE_OPT ]]; then
+            rm "$TARGET"
+            return 0
+        else
+            echo "$TARGET already exists, skipping (use --force to override)"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+ask_for_sudo() {
+    echo "This operation requires sudo to work"
+    if sudo true; then
+        echo "Thanks!"
+        return 0
+    fi
+    return 1
+}
+
+if [[ $OPERATION == "setup-vm" ]]; then
+    should_create "$OVMF_VARS" && cp "$OVMF_VARS_ORIG" "$OVMF_VARS"
+fi
+
+fill_disk() {
+    DISK_PATH="$1"
+
+}
+
+create_disk() {
+    DISK_PATH="$1"
+    HOST_FS="$2"
+
+    dd if=/dev/zero of="$DISK_PATH" bs=1M count=512
+    LOOPDEVICE=$(sudo losetup --find --show "$DISK_PATH")
+    sudo parted --script $LOOPDEVICE mklabel gpt
+    sudo parted --script --align minimal $LOOPDEVICE mkpart boot 1Mb 128Mb
+    sudo parted --script --align minimal $LOOPDEVICE set 1 esp on
+    sudo parted --script --align minimal $LOOPDEVICE mkpart main 128Mb 512Mb
+    sudo mkfs.fat -F 32 ${LOOPDEVICE}p1
+    sudo ${HOST_FS} ${LOOPDEVICE}p2 # unnecessary, but makes a good demo
+    sudo losetup -d $LOOPDEVICE
+}
+
+
+if [[ $OPERATION == "setup-disks" ]]; then
+    ask_for_sudo || exit 1
+    should_create "$SOURCE_DISK" && create_disk "$SOURCE_DISK" mkfs.ext4
+    should_create "$TARGET_DISK" && create_disk "$TARGET_DISK" mkfs.ntfs
+fi
+
+
+mount_disk() {
+    DISK_PATH="$1"
+    DIR_PATH="$2"
+    LOOPDEVICE=$(sudo losetup -P --show --find "$DISK_PATH")
+    [[ ! -d "$DIR_PATH" ]] && mkdir "$DIR_PATH"
+    sudo mount -o noatime,uid=$(id -u),gid=$(id -g) "$LOOPDEVICE"p1 "$DIR_PATH"
+}
+
+
+if [[ $OPERATION == "mount-disks" ]]; then
+    ask_for_sudo || exit 1
+    mount_disk "$SOURCE_DISK" "${LOCATION_OPT}"source
+    mount_disk "$TARGET_DISK" "${LOCATION_OPT}"target
+fi
+
+
+if [[ $OPERATION == "launch-vm" ]]; then
+    qemu-system-x86_64 -machine q35,accel=kvm \
+                   -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
+                   -drive if=pflash,format=raw,file="$OVMF_VARS" \
+                   -drive file="$SOURCE_DISK",format=raw,if=virtio \
+                   -drive file="$TARGET_DISK",format=raw,if=virtio \
+                   -display gtk,gl=off
+fi
