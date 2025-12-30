@@ -20,19 +20,22 @@ if [[ -z $TARGET_OPT ]]; then
     OPTS_FAILED=1
 fi
 
-if [[ -z $OUTPUT_OPT ]]; then
-    echo "No --output option provided"
-    OPTS_FAILED=1
-fi
-
 [[ -n $OPTS_FAILED ]] && exit 1
 
 
-PART_UUID='L\"'$PARTUUID_OPT'\"' TARGET='L\"'$TARGET_OPT'\"' make -B forward.efi
-mv forward.efi $OUTPUT_OPT
+# make --directory=gnu-efi lib gnuefi
+
+make_efi() {
+    make --always-make --file=gnu-efi/apps/Makefile "$1" clean VPATH=gnu-efi/apps TOPDIR=gnu-efi "$2"
+}
+
+make_efi forward.efi CFLAGS='-D PART_UUID=u\"'"$PARTUUID_OPT"'\" -D TARGET=u\"'"$TARGET_OPT"'\"'
+if [[ -n $OUTPUT_OPT ]]; then
+    mv forward.efi $OUTPUT_OPT
+fi
 
 if [[ -n $OUTPUT_HELLO_OPT ]]; then
-    make -B hello.efi
+    make_efi hello.efi
     mv hello.efi $OUTPUT_HELLO_OPT
 fi
 
