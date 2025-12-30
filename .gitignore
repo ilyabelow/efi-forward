@@ -1,3 +1,4 @@
 .vscode
-*.img
-*.4m.fd
+
+# I do testing with `efi-forward-test` in this directory
+testing/**
