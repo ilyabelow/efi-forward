@@ -100,9 +100,9 @@ fi
 mount_disk() {
     DISK_PATH="$1"
     DIR_PATH="$2"
-    LOOPDEVICE=$(sudo losetup -P --show --find "$DISK_PATH")
+    LOOPDEVICE=$(sudo losetup --partscan --show --find --nooverlap "$DISK_PATH")
     [[ ! -d "$DIR_PATH" ]] && mkdir "$DIR_PATH"
-    sudo mount -o noatime,uid=$(id -u),gid=$(id -g) "$LOOPDEVICE"p1 "$DIR_PATH"
+    sudo mount --onlyonce --options noatime,uid=$(id -u),gid=$(id -g) "$LOOPDEVICE"p1 "$DIR_PATH"
 }
 
 
@@ -112,6 +112,19 @@ if [[ $OPERATION == "mount-disks" ]]; then
     mount_disk "$TARGET_DISK" "${LOCATION_OPT}"target
 fi
 
+unmount_disk() {
+    DISK_PATH="$1"
+    DIR_PATH="$2"
+    sudo umount "$DIR_PATH"
+    LOOP_STATUS=$(sudo losetup --associated "$DISK_PATH")
+    sudo losetup --detach ${LOOP_STATUS%%:*}
+}
+
+if [[ $OPERATION == "unmount-disks" ]]; then
+    ask_for_sudo || exit 1
+    unmount_disk "$SOURCE_DISK" "${LOCATION_OPT}"source
+    unmount_disk "$TARGET_DISK" "${LOCATION_OPT}"target
+fi
 
 if [[ $OPERATION == "launch-vm" ]]; then
     qemu-system-x86_64 -machine q35,accel=kvm \
