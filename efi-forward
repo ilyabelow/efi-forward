@@ -23,10 +23,10 @@ fi
 [[ -n $OPTS_FAILED ]] && exit 1
 
 
-# make --directory=gnu-efi lib gnuefi
+ROOTDIR=$(realpath $(dirname $0))
 
 make_efi() {
-    make --always-make --file=gnu-efi/apps/Makefile "$1" clean VPATH=gnu-efi/apps TOPDIR=gnu-efi "$2"
+    make --always-make --file="$ROOTDIR/gnu-efi/apps/Makefile" "$1" clean VPATH="$ROOTDIR/gnu-efi/apps" TOPDIR="$ROOTDIR/gnu-efi" "$2"
 }
 
 make_efi forward.efi CFLAGS='-D PART_UUID=u\"'"$PARTUUID_OPT"'\" -D TARGET=u\"'"$TARGET_OPT"'\"'

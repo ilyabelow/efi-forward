@@ -1,0 +1,7 @@
+#!/bin/bash
+
+ROOTDIR=$(realpath $(dirname $0))
+
+git -C "$ROOTDIR" submodule update
+make --directory="$ROOTDIR/gnu-efi" lib gnuefi
+ln -s -f "$ROOTDIR/forward.c" "$ROOTDIR/gnu-efi/apps"
