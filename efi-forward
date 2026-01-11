@@ -29,7 +29,7 @@ make_efi() {
     make --always-make --file="$ROOTDIR/gnu-efi/apps/Makefile" "$1" clean VPATH="$ROOTDIR/gnu-efi/apps" TOPDIR="$ROOTDIR/gnu-efi" "$2"
 }
 
-make_efi forward.efi CFLAGS='-D PART_UUID=u\"'"$PARTUUID_OPT"'\" -D TARGET=u\"'"$TARGET_OPT"'\"'
+make_efi forward.efi CFLAGS='-D PART_UUID=u\"'"${PARTUUID_OPT@U}"'\" -D TARGET=u\"'"$TARGET_OPT"'\"'
 if [[ -n $OUTPUT_OPT ]]; then
     mv forward.efi $OUTPUT_OPT
 fi

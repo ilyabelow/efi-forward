@@ -2,7 +2,7 @@
 #include <efilib.h>
 
 #ifndef PART_UUID
-#define PART_UUID u"unknown"
+#define PART_UUID u"00000000-0000-0000-0000-000000000000"
 #endif
 
 #ifndef TARGET
@@ -10,48 +10,59 @@
 #endif
 
 
+EFI_HANDLE get_partition_handle_by_guid(CHAR16 *reference_guid_str) {
+  EFI_HANDLE result = NULL;
+
+  UINTN handlesCount = 0;
+  EFI_HANDLE *handles = NULL;
+  uefi_call_wrapper(BS->LocateHandleBuffer, 5, ByProtocol, &gEfiBlockIoProtocolGuid, NULL, &handlesCount, &handles);
+
+  CHAR16 guid_str[36];
+
+  for (UINTN i = 0; i < handlesCount && result == NULL; i++) {
+    EFI_DEVICE_PATH *device_path = DevicePathFromHandle(handles[i]);
+        
+    while (!IsDevicePathEnd(device_path) && result == NULL) {
+      if (device_path->Type == MEDIA_DEVICE_PATH && device_path->SubType == MEDIA_HARDDRIVE_DP) {
+        HARDDRIVE_DEVICE_PATH *hd_path = (HARDDRIVE_DEVICE_PATH *)device_path;
+        if (hd_path->SignatureType == SIGNATURE_TYPE_GUID) {
+          EFI_GUID *guid = (EFI_GUID *)hd_path->Signature;
+          // Yes, converting binary representation to a string and then comparing strings is ugly,
+          // but gnu-efi only comes with GuidToString, StrToGuid from edk2 is absent unfortunately
+          GuidToString(guid_str, guid);
+          Print(u"Got GUID %s\n", guid_str);
+          if (StrCmp(guid_str, reference_guid_str) == 0) {
+            result = handles[i];
+            Print(u"and it is what we are looking for!\n");
+          }
+        }
+      }
+      device_path = NextDevicePathNode(device_path);
+    }
+  }
+
+  uefi_call_wrapper(BS->FreePool, 1, (VOID*)handles);
+
+  return result;
+}
+
 EFI_STATUS
 efi_main (EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 {
   InitializeLib(ImageHandle, SystemTable);
   Print(u"Forwarding to %s/%s\n", PART_UUID, TARGET);
-  return EFI_SUCCESS; // tmp
 
-  UINTN handlesCount;
-  EFI_HANDLE *handles;
-  EFI_STATUS res = uefi_call_wrapper(BS->LocateHandleBuffer, 5,
-    ByProtocol,
-    &gEfiBlockIoProtocolGuid,
-    NULL,
-    &handlesCount,
-    &handles
-  );
-  if (res != EFI_SUCCESS) {
-    Print(u"fail! %d\n", res);
-    return EFI_ABORTED;
+  EFI_HANDLE partition_handle = get_partition_handle_by_guid(PART_UUID);
 
-  }
-  Print(u"success! %d handles found\n", handlesCount);
-
-  for (UINTN i = 0; i < handlesCount; i++) {
-    EFI_DEVICE_PATH *path_protocol = DevicePathFromHandle(handles[i]);
-    // Print
-    EFI_DEVICE_PATH_TO_TEXT_PROTOCOL *text_protocol;
-    uefi_call_wrapper(BS->LocateProtocol, 3, &gEfiDevicePathToTextProtocolGuid, NULL, (VOID**)&text_protocol);
-    CHAR16* path = uefi_call_wrapper(text_protocol->ConvertDevicePathToText, 3, path_protocol, TRUE, TRUE);
-    Print(u"path: %s\n", path);
-    
-    Print(u"Now iteratively\n", path);
-    
-    while (!IsDevicePathEnd(path_protocol)) {
-      path = uefi_call_wrapper(text_protocol->ConvertDeviceNodeToText, 3, path_protocol, TRUE, TRUE);
-      Print(u"path: %s\n", path);
-      Print(u"%d: type %u subtype %u length %d\n", i, path_protocol->Type, path_protocol->SubType, DevicePathNodeLength(path_protocol));
-
-      path_protocol = NextDevicePathNode(path_protocol);
-    }
+  if (partition_handle == NULL) {
+    Print(u"Partition with such GUID not found\n");
+    return EFI_NO_MEDIA;
   }
 
-  uefi_call_wrapper(BS->FreePool, 1, (VOID*)handles);
+  Print(u"Found handle\n");
+
+  // TODO: enter into the file system
+  // TODO: load another image
+
   return EFI_SUCCESS;
 }
